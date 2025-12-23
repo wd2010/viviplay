@@ -7,31 +7,6 @@ import { getFantasyAdvice } from './services/geminiService';
 import Layout from './components/Layout';
 
 /**
- * PWA 更新提示组件
- */
-const UpdateBanner: React.FC<{ onUpdate: () => void }> = ({ onUpdate }) => {
-  return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md animate-in slide-in-from-top-full duration-500">
-      <div className="glass p-4 rounded-2xl flex items-center justify-between border-2 border-yellow-500/30 magical-glow bg-slate-900/90 shadow-2xl">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">📜</span>
-          <div className="text-left">
-            <h4 className="font-bold text-sm">古卷更新</h4>
-            <p className="text-[10px] opacity-70">乐园的境界已经提升，是否立即刷新？</p>
-          </div>
-        </div>
-        <button 
-          onClick={onUpdate}
-          className="bg-yellow-500 hover:bg-yellow-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-black transition-all active:scale-95"
-        >
-          立即觉醒
-        </button>
-      </div>
-    </div>
-  );
-};
-
-/**
  * 魔法数字滚动组件
  */
 const AnimatedNumber: React.FC<{ value: number, className?: string }> = ({ value, className }) => {
@@ -137,7 +112,6 @@ const App: React.FC = () => {
   const [oracleMsg, setOracleMsg] = useState<string>('欢迎，荣耀的追寻者。');
   const [isOracleLoading, setIsOracleLoading] = useState(false);
   const [activeTheme, setActiveTheme] = useState<Theme>(THEMES[0]);
-  const [updateAvailable, setUpdateAvailable] = useState<ServiceWorkerRegistration | null>(null);
   
   // 管理状态
   const [editingAction, setEditingAction] = useState<Partial<PointAction> | null>(null);
@@ -163,25 +137,12 @@ const App: React.FC = () => {
       const theme = THEMES.find(t => t.id === savedThemeId);
       if (theme) setActiveTheme(theme);
     }
-
-    // 监听 PWA 更新事件
-    const handleUpdate = (e: any) => {
-      setUpdateAvailable(e.detail);
-    };
-    window.addEventListener('sw-update-available', handleUpdate);
-    return () => window.removeEventListener('sw-update-available', handleUpdate);
   }, []);
 
   useEffect(() => localStorage.setItem('fp_users', JSON.stringify(users)), [users]);
   useEffect(() => localStorage.setItem('fp_actions', JSON.stringify(actions)), [actions]);
   useEffect(() => localStorage.setItem('fp_shop', JSON.stringify(shopItems)), [shopItems]);
   useEffect(() => localStorage.setItem('fp_theme_id', activeTheme.id), [activeTheme]);
-
-  const handleUpdateApp = () => {
-    if (updateAvailable && updateAvailable.waiting) {
-      updateAvailable.waiting.postMessage('skipWaiting');
-    }
-  };
 
   const handleCreateUser = (name: string) => {
     const newUser: User = {
@@ -531,7 +492,7 @@ const App: React.FC = () => {
           <input 
             type="text" 
             placeholder="输入新旅行者的名字..." 
-            className="flex-1 bg-black/5 border border-slate-700/20 rounded-2xl px-4 py-3 focus:ring-2 outline-none font-bold"
+            className="flex-1 bg-black/5 border border-slate-700/20 rounded-2xl px-4 py-3 focus:ring-2 outline-none"
             style={{ borderColor: activeTheme.primary }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && e.currentTarget.value) {
@@ -582,7 +543,7 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                     <label className="text-sm opacity-60 font-bold">名称</label>
                     <input 
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
                       value={editingAction.name} 
                       onChange={e => setEditingAction({...editingAction, name: e.target.value})}
                     />
@@ -591,7 +552,7 @@ const App: React.FC = () => {
                     <label className="text-sm opacity-60 font-bold">分值</label>
                     <input 
                       type="number"
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
                       value={editingAction.points} 
                       onChange={e => setEditingAction({...editingAction, points: parseInt(e.target.value) || 0})}
                     />
@@ -666,7 +627,7 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                     <label className="text-sm opacity-60 font-bold">名称</label>
                     <input 
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
                       value={editingShopItem.name} 
                       onChange={e => setEditingShopItem({...editingShopItem, name: e.target.value})}
                     />
@@ -675,7 +636,7 @@ const App: React.FC = () => {
                     <label className="text-sm opacity-60 font-bold">所需积分</label>
                     <input 
                       type="number"
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
                       value={editingShopItem.cost} 
                       onChange={e => setEditingShopItem({...editingShopItem, cost: parseInt(e.target.value) || 0})}
                     />
@@ -684,7 +645,7 @@ const App: React.FC = () => {
                     <label className="text-sm opacity-60 font-bold">初始库存</label>
                     <input 
                       type="number"
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
                       value={editingShopItem.stock} 
                       onChange={e => setEditingShopItem({...editingShopItem, stock: parseInt(e.target.value) || 0})}
                     />
@@ -729,7 +690,7 @@ const App: React.FC = () => {
         </div>
       </section>
 
-      {/* 境界氛围管理 - 保持在设置页最后 */}
+      {/* 境界氛围管理 - 移动到最后 */}
       <section className="space-y-4 pt-6 border-t border-slate-700/10">
         <h2 className="text-2xl font-bold flex items-center gap-2">✨ 境界氛围选择</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
@@ -793,7 +754,6 @@ const App: React.FC = () => {
   return (
     <Layout activeView={view} setView={setView} title={getViewTitle()} theme={activeTheme}>
       <div style={{ color: activeTheme.text }}>
-        {updateAvailable && <UpdateBanner onUpdate={handleUpdateApp} />}
         {view === 'HOME' && renderHome()}
         {view === 'USER_DETAILS' && renderUserDetails()}
         {view === 'LEADERBOARD' && renderLeaderboard()}

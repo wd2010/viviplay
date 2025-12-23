@@ -23,7 +23,7 @@ const NavButton = memo(({ icon, label, active, onClick, theme }: {
     style={{ backgroundColor: active ? theme.primary : 'transparent' }}
   >
     <span className="text-2xl">{icon}</span>
-    <span className="text-[10px] mt-1 font-bold uppercase tracking-tighter">{label}</span>
+    <span className="text-[12px] mt-1 font-bold uppercase tracking-tighter">{label}</span>
   </button>
 ));
 

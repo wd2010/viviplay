@@ -1,0 +1,13 @@
+{
+  "name": "奇幻积分乐园",
+  "short_name": "Viviplay",
+  "description": "一个小巧的积分与宝库展示应用",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#9333ea",
+  "icons": [
+    { "src": "/512x512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/512x512.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

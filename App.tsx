@@ -48,12 +48,85 @@ const AnimatedNumber = memo(({ value, className }: { value: number, className?: 
 /**
  * 图标渲染辅助组件
  */
-const DynamicIcon = memo(({ icon, className = "w-10 h-10" }: { icon: string, className?: string }) => {
-  if (icon.startsWith('data:') || icon.startsWith('http')) {
+const DynamicIcon = memo(({ icon, className = "w-10 h-10" }: { icon?: string, className?: string }) => {
+  if (!icon) {
+    return <span className={`${className} flex items-center justify-center opacity-40`}>❓</span>;
+  }
+  if (typeof icon === 'string' && (icon.startsWith('data:') || icon.startsWith('http')) ) {
     return <img src={icon} className={`${className} object-cover rounded-lg`} alt="icon" loading="lazy" />;
   }
   return <span className={className.replace('w-', 'text-')}>{icon}</span>;
 });
+
+// 客户端图片压缩 - 将图片压缩到指定大小以内（默认 200KB），返回 data URL
+async function compressImageFile(file: File, maxSize = 200 * 1024): Promise<string> {
+  const readAsDataURL = (f: File) => new Promise<string>((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result as string);
+    fr.onerror = rej;
+    fr.readAsDataURL(f);
+  });
+
+  const dataUrl = await readAsDataURL(file);
+  const img = await new Promise<HTMLImageElement>((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = dataUrl;
+  });
+
+  const canvas = document.createElement('canvas');
+  let [w, h] = [img.naturalWidth, img.naturalHeight];
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const toBlob = (mime: string, quality: number) => new Promise<Blob | null>((res) => canvas.toBlob(res, mime, quality));
+  const blobToDataURL = (b: Blob) => new Promise<string>((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result as string);
+    fr.onerror = rej;
+    fr.readAsDataURL(b);
+  });
+
+  const target = maxSize;
+  // Prefer webp then jpeg
+  const mimeCandidates = ['image/webp', 'image/jpeg'];
+
+  let quality = 0.9;
+  const minQuality = 0.35;
+  const minDimension = 64; // 最小边长
+
+  // try reducing quality first, then dims
+  for (let attempt = 0; attempt < 8; attempt++) {
+    for (const mime of mimeCandidates) {
+      const blob = await toBlob(mime, quality);
+      if (!blob) continue;
+      if (blob.size <= target) return blobToDataURL(blob);
+      // last resort: if quality can still decrease, try
+    }
+
+    if (quality > minQuality) {
+      quality = Math.max(minQuality, quality - 0.15);
+      continue;
+    }
+
+    // shrink dimensions by 90%
+    w = Math.max(minDimension, Math.floor(w * 0.9));
+    h = Math.max(minDimension, Math.floor(h * 0.9));
+    canvas.width = w;
+    canvas.height = h;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    // slightly reset quality to try again
+    quality = Math.max(minQuality, quality - 0.05);
+  }
+
+  // fallback: return original (maybe larger) dataUrl
+  return dataUrl;
+}
 
 /**
  * 紧凑型图标选择器组件
@@ -71,23 +144,31 @@ const IconPicker = memo(({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+    try {
+      const compressedDataUrl = await compressImageFile(file);
+      onSelect(compressedDataUrl);
+    } catch (err) {
+      // fallback: read original as data URL
       const reader = new FileReader();
       reader.onloadend = () => onSelect(reader.result as string);
       reader.readAsDataURL(file);
+    } finally {
+      // allow re-uploading the same file later
+      e.currentTarget.value = '';
     }
   }, [onSelect]);
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-[10px] font-bold opacity-60 uppercase tracking-widest">{label}</label>
+        <label className="text-[12px] font-bold opacity-60 uppercase tracking-widest">{label}</label>
         <button 
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded-full transition-colors text-white"
+          className="text-[12px] bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded-full transition-colors text-white"
         >
           📁 上传本地
         </button>
@@ -95,6 +176,17 @@ const IconPicker = memo(({
       </div>
       
       <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 h-24 overflow-y-auto p-1.5 border border-slate-700/20 rounded-xl bg-black/10">
+        {/* 如果当前选中的 icon 是 data URL 或外部链接，优先显示为第一项预览 */}
+        {selectedIcon && (selectedIcon.startsWith('data:') || selectedIcon.startsWith('http')) && (
+          <button
+            key="uploaded-preview"
+            type="button"
+            onClick={() => onSelect(selectedIcon)}
+            className={`p-1.5 rounded-lg transition-all ${selectedIcon === selectedIcon ? 'bg-purple-600 scale-105 text-white' : 'hover:bg-white/10'}`}
+          >
+            <DynamicIcon icon={selectedIcon} className="w-10 h-10" />
+          </button>
+        )}
         {icons.map(icon => (
           <button
             key={icon}
@@ -187,7 +279,7 @@ const UserDetailView = memo(({ user, actions, onAction, activeTheme, onBack }: {
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div className="space-y-6">
-        <h3 className="text-xl font-bold flex items-center gap-2">法则操作</h3>
+        <h3 className="text-xl font-bold flex items-center gap-2">积分操作</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {actions.map(a => (
             <button key={a.id} onClick={() => onAction(a)} className={`p-4 rounded-2xl border transition-all flex flex-col items-center justify-center gap-2 ${a.type === ItemType.ADD ? 'border-green-500/20 bg-green-500/5 hover:bg-green-500/10' : 'border-red-500/20 bg-red-500/5 hover:bg-red-500/10'}`}>
@@ -203,7 +295,7 @@ const UserDetailView = memo(({ user, actions, onAction, activeTheme, onBack }: {
         <div className="max-h-[400px] overflow-y-auto">
           {user.history.map((h) => (
             <div key={h.id} className="p-4 border-b border-black/5 flex justify-between items-center">
-              <div><p className="font-bold text-sm">{h.actionName}</p><p className="text-[10px] opacity-40">{new Date(h.timestamp).toLocaleString()}</p></div>
+              <div><p className="font-bold text-sm">{h.actionName}</p><p className="text-[12px] opacity-40">{new Date(h.timestamp).toLocaleString()}</p></div>
               <div className={`px-3 py-1 rounded-full text-xs font-black ${h.points >= 0 ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}`}>{h.points >= 0 ? '+' : ''}{h.points}</div>
             </div>
           ))}
@@ -245,7 +337,7 @@ const App: React.FC = () => {
       try {
         await dbService.init();
         // 尝试从 localStorage 迁移数据
-        await dbService.migrateFromLocalStorage();
+        // await dbService.migrateFromLocalStorage();
 
         const savedUsers = await dbService.get<User[]>('fp_users');
         const savedActions = await dbService.get<PointAction[]>('fp_actions');
@@ -309,7 +401,7 @@ const App: React.FC = () => {
     const newUser: User = {
       id: Date.now().toString(),
       name: userData.name,
-      avatar: userData.avatar || AVATAR_ICONS[0],
+      avatar: userData.avatar,
       points: userData.points || 0,
       history: []
     };
@@ -432,16 +524,16 @@ const App: React.FC = () => {
             <section className="space-y-4">
               <div className="flex justify-between items-center">
                  <h2 className="text-2xl font-bold">🧙 居民管理</h2>
-                 <button onClick={() => setIsAddingUser(true)} className="px-4 py-2 rounded-xl font-bold text-white" style={{ backgroundColor: activeTheme.primary }}>+ 召唤</button>
+                 <button onClick={() => { setIsAddingUser(true); setEditingUser({}); }} className="px-4 py-2 rounded-xl font-bold text-white" style={{ backgroundColor: activeTheme.primary }}>+ 召唤</button>
               </div>
               {(isAddingUser || editingUser) && (
                 <div className="glass p-6 rounded-3xl border-2 space-y-4" style={{ borderColor: `${activeTheme.primary}80` }}>
                   <h3 className="font-bold">修改居民</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <input className="bg-black/5 p-3 rounded-xl outline-none" placeholder="尊名" value={editingUser?.name || ''} onChange={e => setEditingUser({...editingUser, name: e.target.value})} />
-                    <input type="number" className="bg-black/5 p-3 rounded-xl outline-none" placeholder="积分" value={editingUser?.points || 0} onChange={e => setEditingUser({...editingUser, points: parseInt(e.target.value) || 0})} />
+                    <input className="bg-black/5 p-3 rounded-xl outline-none" placeholder="尊名" value={editingUser?.name || ''} onChange={e => setEditingUser(prev => ({ ...(prev || {}), name: e.target.value }))} />
+                    <input type="number" className="bg-black/5 p-3 rounded-xl outline-none" placeholder="积分" value={editingUser?.points || 0} onChange={e => setEditingUser(prev => ({ ...(prev || {}), points: parseInt(e.target.value) || 0 }))} />
                   </div>
-                  <IconPicker label="选择外观" icons={AVATAR_ICONS} selectedIcon={editingUser?.avatar || '🧙‍♂️'} onSelect={icon => setEditingUser({...editingUser, avatar: icon})} />
+                  <IconPicker label="选择外观" icons={AVATAR_ICONS} selectedIcon={editingUser?.avatar ?? ''} onSelect={icon => setEditingUser(prev => ({ ...(prev || {}), avatar: icon }))} />
                   <div className="flex gap-2">
                     <button onClick={() => { editingUser?.id ? verifyPass(() => { setUsers(users.map(u => u.id === editingUser.id ? (editingUser as User) : u)); setEditingUser(null); }) : handleAddUser(editingUser || {}); }} className="flex-1 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: activeTheme.primary }}>保存</button>
                     <button onClick={() => { setEditingUser(null); setIsAddingUser(false); }} className="flex-1 py-3 bg-slate-600 rounded-xl text-white font-bold">取消</button>
@@ -466,7 +558,7 @@ const App: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
                   <div className="space-y-2">
-                      <h4 className="text-green-600 font-bold text-[10px] uppercase tracking-widest ml-2">荣耀 (ADD)</h4>
+                      <h4 className="text-green-600 font-bold text-[12px] uppercase tracking-widest ml-2">荣耀 (ADD)</h4>
                       <div className="space-y-2">
                           {actions.filter(a => a.type === ItemType.ADD).map(a => (
                               <div key={a.id} className="glass p-3 rounded-2xl flex items-center justify-between border-l-4 border-green-500/30">
@@ -477,7 +569,7 @@ const App: React.FC = () => {
                       </div>
                   </div>
                   <div className="space-y-2">
-                      <h4 className="text-red-600 font-bold text-[10px] uppercase tracking-widest ml-2">惩戒 (SUB)</h4>
+                      <h4 className="text-red-600 font-bold text-[12px] uppercase tracking-widest ml-2">惩戒 (SUB)</h4>
                       <div className="space-y-2">
                           {actions.filter(a => a.type === ItemType.SUBTRACT).map(a => (
                               <div key={a.id} className="glass p-3 rounded-2xl flex items-center justify-between border-l-4 border-red-500/30">
@@ -501,7 +593,7 @@ const App: React.FC = () => {
                       <div key={s.id} className="glass p-4 rounded-2xl flex items-center justify-between border border-yellow-500/10">
                           <div className="flex items-center gap-3">
                               <DynamicIcon icon={s.icon} className="w-8 h-8 text-2xl" />
-                              <div><p className="font-bold text-sm">{s.name}</p><p className="text-[10px] font-bold text-yellow-600 uppercase tracking-widest">{s.cost} ✨ | {s.stock}件</p></div>
+                              <div><p className="font-bold text-sm">{s.name}</p><p className="text-[12px] font-bold text-yellow-600 uppercase tracking-widest">{s.cost} ✨ | {s.stock}件</p></div>
                           </div>
                           <button onClick={() => setEditingShopItem({...s})} className="p-2 hover:bg-black/10 rounded-lg">✏️</button>
                       </div>
@@ -521,7 +613,7 @@ const App: React.FC = () => {
                     style={{ backgroundColor: theme.bg, color: theme.text, borderColor: activeTheme.id === theme.id ? theme.primary : 'transparent' }}
                   >
                     <div className="w-8 h-8 rounded-full border-2 border-white/20" style={{ background: theme.primary }}></div>
-                    <span className="text-[10px] font-black uppercase tracking-tighter truncate w-full text-center">{theme.name}</span>
+                    <span className="text-[12px] font-black uppercase tracking-tighter truncate w-full text-center">{theme.name}</span>
                   </button>
                 ))}
               </div>
@@ -539,19 +631,19 @@ const App: React.FC = () => {
              <div className="text-center mb-2 shrink-0"><span className="text-2xl block">📖</span><h3 className="text-lg font-bold fantasy-font tracking-widest uppercase">法则配置</h3></div>
              <div className="space-y-2 overflow-y-auto px-1 pb-2 flex-1 scrollbar-thin">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold opacity-60 ml-2 uppercase tracking-widest">名称</label>
+                  <label className="text-[12px] font-bold opacity-60 ml-2 uppercase tracking-widest">名称</label>
                   <input className="w-full bg-black/20 p-2.5 rounded-2xl outline-none border border-white/5 focus:border-purple-500 transition-colors font-bold text-sm" value={editingAction.name} onChange={e => setEditingAction({...editingAction, name: e.target.value})} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold opacity-60 ml-2 uppercase tracking-widest">属性</label>
+                    <label className="text-[12px] font-bold opacity-60 ml-2 uppercase tracking-widest">属性</label>
                     <div className="flex bg-black/20 rounded-2xl p-1">
-                       <button onClick={() => setEditingAction({...editingAction, type: ItemType.ADD})} className={`flex-1 py-1.5 rounded-xl text-[10px] font-bold ${editingAction.type === ItemType.ADD ? 'bg-green-600 text-white' : 'opacity-40'}`}>荣耀 (+)</button>
-                       <button onClick={() => setEditingAction({...editingAction, type: ItemType.SUBTRACT})} className={`flex-1 py-1.5 rounded-xl text-[10px] font-bold ${editingAction.type === ItemType.SUBTRACT ? 'bg-red-600 text-white' : 'opacity-40'}`}>惩戒 (-)</button>
+                       <button onClick={() => setEditingAction({...editingAction, type: ItemType.ADD})} className={`flex-1 py-1.5 rounded-xl text-[12px] font-bold ${editingAction.type === ItemType.ADD ? 'bg-green-600 text-white' : 'opacity-40'}`}>荣耀 (+)</button>
+                       <button onClick={() => setEditingAction({...editingAction, type: ItemType.SUBTRACT})} className={`flex-1 py-1.5 rounded-xl text-[12px] font-bold ${editingAction.type === ItemType.SUBTRACT ? 'bg-red-600 text-white' : 'opacity-40'}`}>惩戒 (-)</button>
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold opacity-60 ml-2 uppercase tracking-widest">分值</label>
+                    <label className="text-[12px] font-bold opacity-60 ml-2 uppercase tracking-widest">分值</label>
                     <input type="number" className="w-full bg-black/20 p-2 rounded-2xl outline-none border border-white/5 font-bold text-center text-sm" value={editingAction.points} onChange={e => setEditingAction({...editingAction, points: parseInt(e.target.value) || 0})} />
                   </div>
                 </div>
@@ -559,7 +651,7 @@ const App: React.FC = () => {
              </div>
              <div className="flex gap-2 pt-3 shrink-0">
                 <button onClick={() => { if (editingAction.name) { setActions(prev => editingAction.id ? prev.map(a => a.id === editingAction.id ? (editingAction as PointAction) : a) : [...prev, { ...editingAction, id: Date.now().toString() } as PointAction]); setEditingAction(null); audioService.playMagic(); } }} className="flex-[2] py-2.5 rounded-2xl font-black text-white shadow-xl transition-all active:scale-95 text-xs uppercase" style={{ backgroundColor: activeTheme.primary }}>保存</button>
-                <button onClick={() => setEditingAction(null)} className="flex-1 py-2.5 bg-slate-800 rounded-2xl font-bold text-white text-[10px] uppercase">取消</button>
+                <button onClick={() => setEditingAction(null)} className="flex-1 py-2.5 bg-slate-800 rounded-2xl font-bold text-white text-[12px] uppercase">取消</button>
              </div>
           </div>
         </div>
@@ -573,16 +665,16 @@ const App: React.FC = () => {
              <div className="text-center mb-2 shrink-0"><span className="text-2xl block">💎</span><h3 className="text-lg font-bold fantasy-font tracking-widest uppercase text-yellow-500">藏品配置</h3></div>
              <div className="space-y-2 overflow-y-auto px-1 pb-2 flex-1 scrollbar-thin">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold opacity-60 ml-2 uppercase tracking-widest">藏品称谓</label>
+                  <label className="text-[12px] font-bold opacity-60 ml-2 uppercase tracking-widest">藏品称谓</label>
                   <input className="w-full bg-black/40 p-2.5 rounded-2xl outline-none border border-yellow-500/20 focus:border-yellow-500 transition-colors font-bold text-sm text-yellow-100" value={editingShopItem.name || ''} onChange={e => setEditingShopItem({...editingShopItem, name: e.target.value})} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                    <div className="space-y-1">
-                     <label className="text-[10px] font-bold opacity-60 ml-2 uppercase tracking-widest">售价</label>
+                     <label className="text-[12px] font-bold opacity-60 ml-2 uppercase tracking-widest">售价</label>
                      <input type="number" className="w-full bg-black/40 p-2 rounded-2xl outline-none border border-yellow-500/20 font-black text-center text-yellow-500 text-sm" value={editingShopItem.cost || 0} onChange={e => setEditingShopItem({...editingShopItem, cost: parseInt(e.target.value) || 0})} />
                    </div>
                    <div className="space-y-1">
-                     <label className="text-[10px] font-bold opacity-60 ml-2 uppercase tracking-widest">库存</label>
+                     <label className="text-[12px] font-bold opacity-60 ml-2 uppercase tracking-widest">库存</label>
                      <input type="number" className="w-full bg-black/40 p-2 rounded-2xl outline-none border border-yellow-500/20 font-black text-center text-sm" value={editingShopItem.stock || 0} onChange={e => setEditingShopItem({...editingShopItem, stock: parseInt(e.target.value) || 0})} />
                    </div>
                 </div>
@@ -590,7 +682,7 @@ const App: React.FC = () => {
              </div>
              <div className="flex gap-2 pt-3 shrink-0">
                 <button onClick={() => { if (editingShopItem.name) { setShopItems(prev => editingShopItem.id ? prev.map(s => s.id === editingShopItem.id ? (editingShopItem as ShopItem) : s) : [...prev, { ...editingShopItem, id: Date.now().toString() } as ShopItem]); setEditingShopItem(null); audioService.playCoin(); } }} className="flex-[2] py-2.5 rounded-2xl font-black text-slate-900 shadow-xl transition-all active:scale-95 text-xs uppercase bg-gradient-to-r from-yellow-400 to-amber-600">入库</button>
-                <button onClick={() => setEditingShopItem(null)} className="flex-1 py-2.5 bg-slate-800 rounded-2xl font-bold text-white text-[10px] uppercase">取消</button>
+                <button onClick={() => setEditingShopItem(null)} className="flex-1 py-2.5 bg-slate-800 rounded-2xl font-bold text-white text-[12px] uppercase">取消</button>
              </div>
           </div>
         </div>

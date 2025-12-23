@@ -520,15 +520,15 @@ const App: React.FC = () => {
         
         {view === 'ADMIN' && (
           <div className="space-y-12 animate-in fade-in duration-500 pb-24">
-            {/* 居民管理 */}
+            {/* 宝贝管理 */}
             <section className="space-y-4">
               <div className="flex justify-between items-center">
-                 <h2 className="text-2xl font-bold">🧙 居民管理</h2>
+                 <h2 className="text-2xl font-bold">🧙 宝贝管理</h2>
                  <button onClick={() => { setIsAddingUser(true); setEditingUser({}); }} className="px-4 py-2 rounded-xl font-bold text-white" style={{ backgroundColor: activeTheme.primary }}>+ 召唤</button>
               </div>
               {(isAddingUser || editingUser) && (
                 <div className="glass p-6 rounded-3xl border-2 space-y-4" style={{ borderColor: `${activeTheme.primary}80` }}>
-                  <h3 className="font-bold">修改居民</h3>
+                  <h3 className="font-bold">修改宝贝</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <input className="bg-black/5 p-3 rounded-xl outline-none" placeholder="尊名" value={editingUser?.name || ''} onChange={e => setEditingUser(prev => ({ ...(prev || {}), name: e.target.value }))} />
                     <input type="number" className="bg-black/5 p-3 rounded-xl outline-none" placeholder="积分" value={editingUser?.points || 0} onChange={e => setEditingUser(prev => ({ ...(prev || {}), points: parseInt(e.target.value) || 0 }))} />

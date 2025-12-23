@@ -48,4 +48,4 @@ export interface Theme {
   text: string;
 }
 
-export type View = 'HOME' | 'USER_DETAILS' | 'ADMIN' | 'SHOP' | 'ORACLE' | 'LEADERBOARD';
+export type View = 'HOME' | 'USER_DETAILS' | 'ADMIN' | 'SHOP' | 'LEADERBOARD';

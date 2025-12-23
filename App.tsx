@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, View, PointAction, ShopItem, ItemType, PointHistory, Theme } from './types';
 import { DEFAULT_ACTIONS, DEFAULT_SHOP_ITEMS, ADMIN_PASSWORD, MAGIC_ICONS, THEMES } from './constants';
 import { audioService } from './services/audioService';
-import { getFantasyAdvice } from './services/geminiService';
 import Layout from './components/Layout';
 
 /**
@@ -109,8 +108,6 @@ const App: React.FC = () => {
   const [actions, setActions] = useState<PointAction[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [oracleMsg, setOracleMsg] = useState<string>('欢迎，荣耀的追寻者。');
-  const [isOracleLoading, setIsOracleLoading] = useState(false);
   const [activeTheme, setActiveTheme] = useState<Theme>(THEMES[0]);
   
   // 管理状态
@@ -225,17 +222,6 @@ const App: React.FC = () => {
     if (selectedUser?.id === user.id) {
       setSelectedUser(updatedUsers.find(u => u.id === user.id) || null);
     }
-  };
-
-  const askOracle = async () => {
-    if (!selectedUser) {
-        alert('请先选择一位旅行者！');
-        return;
-    }
-    setIsOracleLoading(true);
-    const msg = await getFantasyAdvice(selectedUser.points, selectedUser.name);
-    setOracleMsg(msg);
-    setIsOracleLoading(false);
   };
 
   const renderIcon = (icon: string, className: string = "w-10 h-10") => {
@@ -492,7 +478,7 @@ const App: React.FC = () => {
           <input 
             type="text" 
             placeholder="输入新旅行者的名字..." 
-            className="flex-1 bg-black/5 border border-slate-700/20 rounded-2xl px-4 py-3 focus:ring-2 outline-none"
+            className="flex-1 bg-black/5 border border-slate-700/20 rounded-2xl px-4 py-3 focus:ring-2 outline-none font-bold"
             style={{ borderColor: activeTheme.primary }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && e.currentTarget.value) {
@@ -543,7 +529,7 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                     <label className="text-sm opacity-60 font-bold">名称</label>
                     <input 
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
                       value={editingAction.name} 
                       onChange={e => setEditingAction({...editingAction, name: e.target.value})}
                     />
@@ -552,7 +538,7 @@ const App: React.FC = () => {
                     <label className="text-sm opacity-60 font-bold">分值</label>
                     <input 
                       type="number"
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
                       value={editingAction.points} 
                       onChange={e => setEditingAction({...editingAction, points: parseInt(e.target.value) || 0})}
                     />
@@ -627,7 +613,7 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                     <label className="text-sm opacity-60 font-bold">名称</label>
                     <input 
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
                       value={editingShopItem.name} 
                       onChange={e => setEditingShopItem({...editingShopItem, name: e.target.value})}
                     />
@@ -636,7 +622,7 @@ const App: React.FC = () => {
                     <label className="text-sm opacity-60 font-bold">所需积分</label>
                     <input 
                       type="number"
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
                       value={editingShopItem.cost} 
                       onChange={e => setEditingShopItem({...editingShopItem, cost: parseInt(e.target.value) || 0})}
                     />
@@ -645,7 +631,7 @@ const App: React.FC = () => {
                     <label className="text-sm opacity-60 font-bold">初始库存</label>
                     <input 
                       type="number"
-                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20" 
+                      className="w-full bg-black/5 p-2 rounded-lg border border-slate-700/20 font-bold" 
                       value={editingShopItem.stock} 
                       onChange={e => setEditingShopItem({...editingShopItem, stock: parseInt(e.target.value) || 0})}
                     />
@@ -690,7 +676,7 @@ const App: React.FC = () => {
         </div>
       </section>
 
-      {/* 境界氛围管理 - 移动到最后 */}
+      {/* 境界氛围管理 - 保持在设置页最后 */}
       <section className="space-y-4 pt-6 border-t border-slate-700/10">
         <h2 className="text-2xl font-bold flex items-center gap-2">✨ 境界氛围选择</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
@@ -710,42 +696,12 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderOracle = () => (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-8 animate-in fade-in duration-500">
-      <div className="relative">
-         <div 
-          className="w-40 h-40 rounded-full magical-glow transition-all duration-1000"
-          style={{ 
-            backgroundImage: `linear-gradient(to bottom right, ${activeTheme.primary}, ${activeTheme.secondary})`,
-            animation: isOracleLoading ? 'pulse 2s infinite ease-in-out' : 'none',
-            filter: isOracleLoading ? 'blur(8px) scale(1.1)' : 'none'
-          }}
-         ></div>
-         <span className="absolute inset-0 flex items-center justify-center text-6xl">🔮</span>
-      </div>
-      <div className="max-w-xl glass p-8 rounded-[40px] relative shadow-lg">
-        <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold uppercase text-white shadow-sm" style={{ backgroundColor: activeTheme.primary }}>先知的启示</div>
-        <p className="text-xl italic leading-relaxed opacity-90">
-           {isOracleLoading ? "正在诵读咒语..." : `"${oracleMsg}"`}
-        </p>
-      </div>
-      <button 
-        onClick={askOracle}
-        disabled={isOracleLoading}
-        className="px-8 py-4 rounded-full font-bold magical-glow hover:scale-105 transition-all disabled:opacity-50 text-white shadow-xl"
-        style={{ backgroundColor: activeTheme.primary }}
-      >寻求指引</button>
-      {!selectedUser && <p className="text-red-600 text-sm font-bold">请先在首页选择一位旅行者！</p>}
-    </div>
-  );
-
   const getViewTitle = () => {
     switch(view) {
       case 'HOME': return '荣耀王国';
       case 'USER_DETAILS': return selectedUser?.name || '旅行者详情';
       case 'SHOP': return '奇幻宝库';
       case 'ADMIN': return '秘法大厅';
-      case 'ORACLE': return '占卜祭坛';
       case 'LEADERBOARD': return '荣耀巅峰榜';
       default: return '乐园';
     }
@@ -759,7 +715,6 @@ const App: React.FC = () => {
         {view === 'LEADERBOARD' && renderLeaderboard()}
         {view === 'SHOP' && renderShop()}
         {view === 'ADMIN' && renderAdmin()}
-        {view === 'ORACLE' && renderOracle()}
       </div>
 
       {/* 自定义管理员验证弹窗 */}

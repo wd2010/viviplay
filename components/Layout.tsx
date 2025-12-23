@@ -63,7 +63,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeView, setView, title = 
         <NavButton icon="🏰" label="首页" active={activeView === 'HOME' || activeView === 'USER_DETAILS'} onClick={() => setView('HOME')} theme={theme} />
         <NavButton icon="🏆" label="排行" active={activeView === 'LEADERBOARD'} onClick={() => setView('LEADERBOARD')} theme={theme} />
         <NavButton icon="💎" label="商店" active={activeView === 'SHOP'} onClick={() => setView('SHOP')} theme={theme} />
-        <NavButton icon="🔮" label="祭坛" active={activeView === 'ORACLE'} onClick={() => setView('ORACLE')} theme={theme} />
         <NavButton icon="⚙️" label="管理" active={activeView === 'ADMIN'} onClick={() => setView('ADMIN')} theme={theme} />
       </nav>
     </div>

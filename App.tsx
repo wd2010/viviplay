@@ -217,7 +217,7 @@ const HomeView = memo(({ users, onSelectUser, activeTheme, onGoAdmin }: {
         <button onClick={onGoAdmin} className="mt-6 px-8 py-3 rounded-full font-bold magical-glow transition-colors text-white" style={{ backgroundColor: activeTheme.primary }}>召唤旅行者</button>
       </div>
     ) : (
-      users.map(u => (
+        users.map(u => (
         <div key={u.id} onClick={() => onSelectUser(u)} className="glass p-6 rounded-3xl cursor-pointer hover:scale-[1.02] transition-transform group relative overflow-hidden">
           <div className="flex items-center gap-4">
             <div className="w-20 h-20 rounded-2xl bg-black/20 overflow-hidden flex items-center justify-center">
@@ -228,6 +228,9 @@ const HomeView = memo(({ users, onSelectUser, activeTheme, onGoAdmin }: {
               <p className="text-yellow-600 font-bold flex items-center gap-1">
                 <span className="text-lg">✨</span> <AnimatedNumber value={u.points} /> <span> 积分</span>
               </p>
+              <div className="mt-4">
+                <button onClick={(e) => { e.stopPropagation(); onSelectUser(u); }} className="text-sm py-2 px-4 rounded-full font-bold bg-white/8 hover:bg-white/12 transition-colors">查看 & 管理</button>
+              </div>
             </div>
           </div>
         </div>
@@ -280,14 +283,31 @@ const UserDetailView = memo(({ user, actions, onAction, activeTheme, onBack }: {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div className="space-y-6">
         <h3 className="text-xl font-bold flex items-center gap-2">积分操作</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {actions.map(a => (
-            <button key={a.id} onClick={() => onAction(a)} className={`p-4 rounded-2xl border transition-all flex flex-col items-center justify-center gap-2 ${a.type === ItemType.ADD ? 'border-green-500/20 bg-green-500/5 hover:bg-green-500/10' : 'border-red-500/20 bg-red-500/5 hover:bg-red-500/10'}`}>
-              <DynamicIcon icon={a.icon} className="w-10 h-10 text-3xl" />
-              <span className="text-xs font-bold uppercase truncate w-full text-center">{a.name}</span>
-              <span className={`text-sm font-bold ${a.type === ItemType.ADD ? 'text-green-600' : 'text-red-600'}`}>{a.type === ItemType.ADD ? '+' : '-'}{a.points}</span>
-            </button>
-          ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-green-600 font-bold text-[12px] uppercase tracking-widest mb-2">加分规则</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {actions.filter(a => a.type === ItemType.ADD).map(a => (
+                <button key={a.id} onClick={() => onAction(a)} className="p-4 rounded-2xl border border-green-500/20 bg-green-500/5 hover:bg-green-500/10 transition-all flex flex-col items-center justify-center gap-2">
+                  <DynamicIcon icon={a.icon} className="w-10 h-10 text-3xl" />
+                  <span className="text-xs font-bold uppercase truncate w-full text-center">{a.name}</span>
+                  <span className="text-sm font-bold text-green-600">+{a.points}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-red-600 font-bold text-[12px] uppercase tracking-widest mb-2">减分规则</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {actions.filter(a => a.type === ItemType.SUBTRACT).map(a => (
+                <button key={a.id} onClick={() => onAction(a)} className="p-4 rounded-2xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 transition-all flex flex-col items-center justify-center gap-2">
+                  <DynamicIcon icon={a.icon} className="w-10 h-10 text-3xl" />
+                  <span className="text-xs font-bold uppercase truncate w-full text-center">{a.name}</span>
+                  <span className="text-sm font-bold text-red-600">-{a.points}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
       <div className="glass rounded-[32px] overflow-hidden">
@@ -467,10 +487,48 @@ const App: React.FC = () => {
     setShopItems(prev => prev.map(si => si.id === item.id ? { ...si, stock: si.stock - 1 } : si));
   }, [selectedUser]);
 
+  const [buyDropdownItemId, setBuyDropdownItemId] = useState<string | null>(null);
+  const [confirmBuy, setConfirmBuy] = useState<{ userId: string; itemId: string } | null>(null);
+
+  const handleBuyForUser = useCallback((user: User, item: ShopItem) => {
+    if (user.points < item.cost) {
+      audioService.playFail();
+      alert(`${user.name} 积分不足！`);
+      return;
+    }
+    if (item.stock <= 0) {
+      alert('库存不足！');
+      return;
+    }
+
+    audioService.playMagic();
+    setUsers(prev => prev.map(u => u.id === user.id ? {
+      ...u,
+      points: u.points - item.cost,
+      history: [{ id: Date.now().toString(), actionId: item.id, actionName: `购买了 ${item.name}`, points: -item.cost, timestamp: Date.now() }, ...u.history]
+    } : u));
+    setShopItems(prev => prev.map(si => si.id === item.id ? { ...si, stock: si.stock - 1 } : si));
+    setBuyDropdownItemId(null);
+    setConfirmBuy(null);
+  }, []);
+
+  const onShopBuyClick = useCallback((item: ShopItem) => {
+    if (selectedUser) {
+      // open confirm modal for current selected user
+      setConfirmBuy({ userId: selectedUser.id, itemId: item.id });
+    } else {
+      // toggle inline dropdown for this item
+      setBuyDropdownItemId(prev => prev === item.id ? null : item.id);
+    }
+  }, [selectedUser, handleBuy]);
+
   const handleSelectUser = useCallback((u: User) => {
     setSelectedUser(u);
     setView('USER_DETAILS');
   }, []);
+
+  // 在首页对指定用户执行操作的快捷函数（不改变 selectedUser）
+  // Home quick-actions removed; use user detail to perform actions now
 
   const handleGoHome = useCallback(() => setView('HOME'), []);
   const handleGoAdmin = useCallback(() => setView('ADMIN'), []);
@@ -504,14 +562,46 @@ const App: React.FC = () => {
                         <div key={item.id} className="glass p-6 rounded-3xl flex flex-col items-center gap-4">
                             <DynamicIcon icon={item.icon} className="w-16 h-16 text-5xl" />
                             <div className="text-center"><h3 className="text-xl font-bold">{item.name}</h3><p className="opacity-40 text-xs">库存: {item.stock}</p></div>
-                            <button 
-                              disabled={!selectedUser || item.stock <= 0 || selectedUser.points < item.cost} 
-                              onClick={() => handleBuy(item)} 
-                              className="w-full py-3 rounded-2xl font-bold text-white disabled:opacity-30 transition-all active:scale-95" 
-                              style={{ backgroundColor: activeTheme.primary }}
-                            >
-                              {item.cost} 积分兑换
-                            </button>
+                            <div className="w-full">
+                              <button 
+                                disabled={item.stock <= 0} 
+                                onClick={() => onShopBuyClick(item)} 
+                                className={`w-full py-3 rounded-2xl font-black text-white disabled:opacity-30 transition-all active:scale-95 shadow-lg ${selectedUser ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gradient-to-r from-slate-700 to-slate-600'}`}
+                                style={{ borderColor: selectedUser ? 'transparent' : 'rgba(255,255,255,0.06)' }}
+                              >
+                                {selectedUser ? `${item.cost} 积分兑换` : `为谁兑换? ${item.cost} ✨`}
+                              </button>
+
+                              {/* inline dropdown when no selected user */}
+                              {buyDropdownItemId === item.id && !selectedUser && (
+                                <div className="mt-3 p-3 bg-black/5 rounded-lg border border-white/5">
+                                  {users.length === 0 ? (
+                                    <p className="opacity-60">尚无居民。</p>
+                                  ) : (
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                      {users.map(u => {
+                                        const disabled = u.points < item.cost;
+                                        return (
+                                          <div key={u.id} className={`flex items-center justify-between p-2 rounded-md ${disabled ? 'opacity-40' : 'hover:bg-white/5'} transition-colors`}> 
+                                            <div className="flex items-center gap-3">
+                                              <DynamicIcon icon={u.avatar} className="w-8 h-8" />
+                                              <div>
+                                                <div className="font-bold">{u.name}</div>
+                                                <div className="text-xs opacity-60">{u.points} 积分</div>
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <button disabled={disabled} onClick={() => setConfirmBuy({ userId: u.id, itemId: item.id })} className={`py-1 px-3 rounded-full font-bold text-sm ${disabled ? 'bg-slate-700 text-white/60' : 'bg-emerald-500 text-white'}`}>{disabled ? '积分不足' : '选择兑换'}</button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  <div className="mt-3 text-right"><button onClick={() => setBuyDropdownItemId(null)} className="text-sm py-1 px-3 rounded-md bg-slate-800 text-white">取消</button></div>
+                                </div>
+                              )}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -700,6 +790,24 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {confirmBuy && (() => {
+        const item = shopItems.find(s => s.id === confirmBuy.itemId);
+        const user = users.find(u => u.id === confirmBuy.userId);
+        if (!item || !user) return null;
+        return (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <div className="glass p-6 rounded-[32px] max-w-md w-full border-2 shadow-2xl" style={{ borderColor: `${activeTheme.primary}` }}>
+              <h3 className="text-lg font-bold">确认兑换</h3>
+              <p className="mt-3">确认让 <span className="font-black">{user.name}</span> 使用 <span className="font-black">{item.cost} 积分</span> 兑换 <span className="font-black">{item.name}</span> 吗？</p>
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setConfirmBuy(null)} className="py-2 px-4 rounded-lg bg-slate-800 text-white">取消</button>
+                <button onClick={() => handleBuyForUser(user, item)} className="py-2 px-4 rounded-lg bg-gradient-to-r from-green-400 to-emerald-500 font-bold text-white">确认兑换</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </Layout>
   );
 };

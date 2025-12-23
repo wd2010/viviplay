@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from '
 import { User, View, PointAction, ShopItem, ItemType, PointHistory, Theme } from './types';
 import { DEFAULT_ACTIONS, DEFAULT_SHOP_ITEMS, ADMIN_PASSWORD, MAGIC_ICONS, AVATAR_ICONS, THEMES } from './constants';
 import { audioService } from './services/audioService';
+import { dbService } from './services/dbService';
 import Layout from './components/Layout';
 
 /**
@@ -22,7 +23,6 @@ const AnimatedNumber = memo(({ value, className }: { value: number, className?: 
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      // Easing function: easeOutExpo
       const easeProgress = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
       const currentCount = Math.floor(startValue + (endValue - startValue) * easeProgress);
       
@@ -46,7 +46,7 @@ const AnimatedNumber = memo(({ value, className }: { value: number, className?: 
 });
 
 /**
- * 图标渲染辅助组件 - 减少逻辑内联
+ * 图标渲染辅助组件
  */
 const DynamicIcon = memo(({ icon, className = "w-10 h-10" }: { icon: string, className?: string }) => {
   if (icon.startsWith('data:') || icon.startsWith('http')) {
@@ -110,7 +110,7 @@ const IconPicker = memo(({
   );
 });
 
-// --- 子视图组件优化 ---
+// --- 子视图组件 ---
 
 const HomeView = memo(({ users, onSelectUser, activeTheme, onGoAdmin }: { 
   users: User[], 
@@ -222,6 +222,7 @@ const App: React.FC = () => {
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [activeTheme, setActiveTheme] = useState<Theme>(THEMES[0]);
+  const [isDbReady, setIsDbReady] = useState(false);
   
   const [editingAction, setEditingAction] = useState<Partial<PointAction> | null>(null);
   const [editingShopItem, setEditingShopItem] = useState<Partial<ShopItem> | null>(null);
@@ -231,44 +232,60 @@ const App: React.FC = () => {
   const [passCallback, setPassCallback] = useState<{ execute: () => void } | null>(null);
   const [passInput, setPassInput] = useState('');
 
-  // 禁止滚动穿透逻辑
+  // 禁止滚动穿透
   useEffect(() => {
     const isModalOpen = !!editingAction || !!editingShopItem || !!passCallback;
     document.body.style.overflow = isModalOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [editingAction, editingShopItem, passCallback]);
 
-  // 数据初始化
+  // IndexedDB 初始化与数据加载
   useEffect(() => {
-    const loadData = () => {
+    const bootstrap = async () => {
       try {
-        const savedUsers = localStorage.getItem('fp_users');
-        const savedActions = localStorage.getItem('fp_actions');
-        const savedShop = localStorage.getItem('fp_shop');
-        const savedThemeId = localStorage.getItem('fp_theme_id');
+        await dbService.init();
+        // 尝试从 localStorage 迁移数据
+        await dbService.migrateFromLocalStorage();
 
-        if (savedUsers) setUsers(JSON.parse(savedUsers));
-        setActions(savedActions ? JSON.parse(savedActions) : DEFAULT_ACTIONS);
-        setShopItems(savedShop ? JSON.parse(savedShop) : DEFAULT_SHOP_ITEMS);
+        const savedUsers = await dbService.get<User[]>('fp_users');
+        const savedActions = await dbService.get<PointAction[]>('fp_actions');
+        const savedShop = await dbService.get<ShopItem[]>('fp_shop');
+        const savedThemeId = await dbService.get<string>('fp_theme_id');
+
+        if (savedUsers) setUsers(savedUsers);
+        setActions(savedActions || DEFAULT_ACTIONS);
+        setShopItems(savedShop || DEFAULT_SHOP_ITEMS);
         
         if (savedThemeId) {
           const theme = THEMES.find(t => t.id === savedThemeId);
           if (theme) setActiveTheme(theme);
         }
       } catch (e) {
-        console.error("Failed to load persistence data", e);
+        console.error("Initialization error", e);
+      } finally {
+        setIsDbReady(true);
       }
     };
-    loadData();
+    bootstrap();
   }, []);
 
-  // 数据持久化
-  useEffect(() => { if (users.length > 0) localStorage.setItem('fp_users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { if (actions.length > 0) localStorage.setItem('fp_actions', JSON.stringify(actions)); }, [actions]);
-  useEffect(() => { if (shopItems.length > 0) localStorage.setItem('fp_shop', JSON.stringify(shopItems)); }, [shopItems]);
-  useEffect(() => localStorage.setItem('fp_theme_id', activeTheme.id), [activeTheme]);
+  // 异步持久化逻辑 - 仅在 DB 准备就绪后触发
+  useEffect(() => { 
+    if (isDbReady) dbService.set('fp_users', users); 
+  }, [users, isDbReady]);
+  
+  useEffect(() => { 
+    if (isDbReady) dbService.set('fp_actions', actions); 
+  }, [actions, isDbReady]);
+  
+  useEffect(() => { 
+    if (isDbReady) dbService.set('fp_shop', shopItems); 
+  }, [shopItems, isDbReady]);
+  
+  useEffect(() => { 
+    if (isDbReady) dbService.set('fp_theme_id', activeTheme.id); 
+  }, [activeTheme, isDbReady]);
 
-  // 稳定回调函数
   const verifyPass = useCallback((action: () => void) => {
     setPassCallback({ execute: action });
     setPassInput('');
@@ -324,7 +341,6 @@ const App: React.FC = () => {
     } : u));
   }, [selectedUser]);
 
-  // 更新选中用户引用的逻辑
   useEffect(() => {
     if (selectedUser) {
       const updated = users.find(u => u.id === selectedUser.id);
@@ -366,6 +382,16 @@ const App: React.FC = () => {
 
   const handleGoHome = useCallback(() => setView('HOME'), []);
   const handleGoAdmin = useCallback(() => setView('ADMIN'), []);
+
+  // 如果数据库还没准备好，显示加载中（由于 IndexedDB 是异步的，这可以防止页面闪烁）
+  if (!isDbReady) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#0f172a] text-white">
+        <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 fantasy-font tracking-widest animate-pulse">开启魔法之门...</p>
+      </div>
+    );
+  }
 
   return (
     <Layout activeView={view} setView={setView} title={view === 'ADMIN' ? '秘法大厅' : view === 'SHOP' ? '奇幻宝库' : '荣耀王国'} theme={activeTheme}>

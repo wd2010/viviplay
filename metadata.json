@@ -1,0 +1,8 @@
+{
+  "name": "奇幻积分乐园",
+  "description": "一个带有奇幻主题、音效和AI驱动占卜功能的魔法积分管理系统。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

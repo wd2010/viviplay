@@ -1,0 +1,24 @@
+
+{
+  "name": "奇幻积分乐园",
+  "short_name": "积分乐园",
+  "description": "一个带有奇幻主题、音效和AI驱动占卜功能的魔法积分管理系统。",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#9333ea",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/pixel-art/svg?seed=fantasy-park&backgroundColor=9333ea",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/pixel-art/svg?seed=fantasy-park&backgroundColor=9333ea",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
